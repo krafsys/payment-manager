@@ -142,7 +142,7 @@ Or inject `Krafsys\PaymentManager\PaymentManager` via the container as normal.
 ## Testing this package
 
 ```bash
-composer install
+composer install 
 composer test
 ```
 
