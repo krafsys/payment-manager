@@ -6,7 +6,7 @@ A single, consistent PHP interface for five Nigerian payment gateways — **Pays
 - **Framework-agnostic core** with an optional Laravel service provider + facade.
 - Requires **PHP 8.1+**.
 
-> ⚠️ **Before going live:** this package was built from each provider's public API documentation, but payment provider APIs change and some details (particularly **Monnify's webhook hash formula** and **all of the Bachs integration**, which is architected differently from the other four — see `src/Gateways/BachsGateway.php`) should be verified against your dashboard's current docs and tested against sandbox credentials before you rely on them with real money.
+> ⚠️ **Before going live:** this package was built from each provider's public API documentation, but payment provider APIs change. Two things are still worth double-checking against current docs before you rely on them with real money: **Monnify's webhook hash formula**, and **Bachs's refund endpoint + exact webhook header names** (the core Bachs checkout flow — endpoint, request/response shape, verify-by-checkout_id — has been confirmed against docs.bachs.io; see `src/Gateways/BachsGateway.php`).
 
 ## Installation
 
@@ -110,7 +110,7 @@ if ($event->status === \Krafsys\PaymentManager\Enums\TransactionStatus::Success)
 | Flutterwave | `verif-hash` | Direct comparison against the hash you set on your dashboard (`webhook_secret` config) |
 | Monnify | `monnify-signature` (confirm in your dashboard) | SHA512 of secret key + payload fields — **verify field order against current docs** |
 | Kora | `Kora-Signature` | HMAC-SHA256 of the payload's `data` object with your secret key |
-| Bachs | provider-specific — **verify against current docs** | HMAC-SHA256 comparison, `webhook_secret` config (best-effort implementation) |
+| Bachs | provider-specific — **verify header name against your dashboard** | HMAC-SHA256 of `{timestamp}.{body}` (Stripe-style) — concatenate the timestamp yourself before calling `verifyWebhookSignature()` |
 
 ## Laravel usage
 
@@ -137,7 +137,7 @@ Or inject `Krafsys\PaymentManager\PaymentManager` via the container as normal.
 - **Paystack** and **Kora** — straightforward amount + currency charges, matches the package's normalized model closely.
 - **Flutterwave** — refunds require Flutterwave's internal transaction id, not your reference, so `refund()` transparently calls `verify()` first to resolve it (one extra API call).
 - **Monnify** — requires exchanging your API key/secret for a short-lived Bearer token before every other call. The adapter fetches and caches this token in memory (refetching ~5 minutes before expiry), so you don't need to manage it yourself.
-- **Bachs** — is architected around products/checkout sessions rather than a flat charge. This adapter builds a single ad-hoc line item per payment to fit the common interface. Treat this integration as a starting scaffold and confirm the exact request/response field names against Bachs's current API reference before production use.
+- **Bachs** — endpoint is `POST {base}/v1/checkout-sessions` (note the `/v1/` prefix and hyphen — not `/checkout_sessions`), and amounts must be decimal **strings** (`"5000.00"`), never floats or minor units. **Its `verify()` works differently from the other four**: it takes Bachs's own `checkout_id` (e.g. `chk_5b6e19d42f8a`), not a reference you invented. `initialize()` returns that `checkout_id` as `PaymentResponse->reference` — store *that* value and pass it into `verify()` later. Bachs is also natively architected around pre-created Products; this adapter uses the documented `pricing: {amount, currency}` root field to charge an ad-hoc amount without one. The refund endpoint and exact webhook signature header names are not yet confirmed against a primary Bachs reference — check your dashboard before depending on them.
 
 ## Testing this package
 
